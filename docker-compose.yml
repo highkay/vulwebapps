@@ -1,0 +1,97 @@
+version: '3'
+services:
+  juice-shop:
+    image: bkimminich/juice-shop
+    ports:
+      - 8001:3000
+    restart: always
+  webgoat:
+    image: webgoat/webgoat
+    ports:
+      - 8002:8000
+      - 9090:9090
+    restart: always
+  dvwa:
+    image: highkay/ghcr.io.digininja.dvwa:latest
+    # Change `always` to `build` to build from local source
+    pull_policy: always
+    environment:
+      - DB_SERVER=db
+    depends_on:
+      - db
+    ports:
+      - 8003:80
+    restart: unless-stopped
+
+  db:
+    image: mariadb:10
+    environment:
+      - MYSQL_ROOT_PASSWORD=dvwa
+      - MYSQL_DATABASE=dvwa
+      - MYSQL_USER=dvwa
+      - MYSQL_PASSWORD=p@ssw0rd
+    volumes:
+      - dvwa:/var/lib/mysql
+    restart: unless-stopped
+
+  database:
+    container_name: database
+    image: docker.io/webpwnized/mutillidae:database
+
+  database_admin:
+    container_name: database_admin
+    depends_on:
+      - database
+    image: docker.io/webpwnized/mutillidae:database_admin
+    ports:
+      - 10081:80
+
+  # Port 8080 is for StackHawk to scan. Use port 8088 for Burp-Suite
+  # IP 127.0.0.1 is for mutillidae.localhost or www.mutillidae.localhost
+  # IP 127.0.0.1 is for cors.mutilliiidae.localhost
+  www:
+    container_name: www
+    depends_on:
+      - database
+      - directory
+    image: docker.io/webpwnized/mutillidae:www
+    ports:
+      - 8003:80
+      - 8004:80
+      - 8005:443
+
+  directory:
+    container_name: directory
+    image: docker.io/webpwnized/mutillidae:ldap
+    volumes:
+      - ldap_data:/var/lib/ldap
+      - ldap_config:/etc/ldap/slapd.d
+    ports:
+      - 10389:389
+
+  directory_admin:
+    container_name: directory_admin
+    depends_on:
+      - directory
+    image: docker.io/webpwnized/mutillidae:ldap_admin
+    ports:
+      - 8006:80
+
+  web:
+    image: docker.io/highkay/nodegoat
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/nodegoat
+    command: sh -c "until nc -z -w 2 mongo 27017 && echo 'mongo is ready for connections' && node artifacts/db-reset.js && npm start; do sleep 2; done"
+    ports:
+      - "8007:4000"
+
+  mongo:
+    image: mongo:4.4
+    user: mongodb
+    expose:
+      - 27017
+
+volumes:
+  dvwa:
+  ldap_data:
+  ldap_config:
